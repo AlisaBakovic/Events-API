@@ -1,17 +1,14 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches:
       - main
 
-  pull_request:
-    branches:
-      - main
-
 jobs:
-  test:
+  test-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout code
@@ -27,24 +24,30 @@ jobs:
           pip install -r requirements.txt
           pip install pytest requests
 
-      - name: Build Docker image
-        run: docker build -t events-api .
-
-      - name: Start container
-        run: |
-          docker run -d -p 5001:5001 --name events-api events-api
-          sleep 10
-
-      - name: Health check
-        run: curl http://localhost:5001/api/health
-
       - name: Run tests
         run: pytest -v
 
-      - name: Stop container
-        if: always()
-        run: docker stop events-api
+      - name: Build Docker image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t ${{ secrets.DOCKER_USERNAME }}/events-api:latest .
 
-      - name: Remove container
-        if: always()
-        run: docker rm events-api
+      - name: Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Push image to Docker Hub
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/events-api:latest
+
+      - name: Trigger Render Deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Smoke test
+        run: |
+          curl ${{ secrets.RENDER_BASE_URL }}/api/health
