@@ -30,5 +30,21 @@ jobs:
       - name: Build Docker image
         run: docker build -t events-api .
 
+      - name: Start container
+        run: |
+          docker run -d -p 5001:5001 --name events-api events-api
+          sleep 10
+
+      - name: Health check
+        run: curl http://localhost:5001/api/health
+
       - name: Run tests
         run: pytest -v
+
+      - name: Stop container
+        if: always()
+        run: docker stop events-api
+
+      - name: Remove container
+        if: always()
+        run: docker rm events-api
